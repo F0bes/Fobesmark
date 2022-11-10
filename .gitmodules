@@ -1,0 +1,3 @@
+[submodule "fontengine"]
+	path = fontengine
+	url = https://github.com/f0bes/fontengine.git
