@@ -44,7 +44,7 @@ inline void waitVU1Finish(void)
 		"vu1_active_%=:\n"
 		"bc2t vu1_active_%=\n"
 		"nop\n"
-		:);
+		);
 }
 
 // Return true on success

@@ -243,103 +243,98 @@ static bool isMul1ByxErrorEmulated()
 
 	return true;
 }
-/* Doesn't work, can't get the console to trigger it
-static s32 wdSemaID = 0;
-static s32 intWatchdogHandler(s32 cause)
-{
-	sio_puts("intr hit\n");
-	iSignalSema(wdSemaID);
-	ExitHandler();
 
-	return 0;
-}
-
-inline u32 pollVU0Finish()
-{
-	u32 value;
-	asm(
-		"cfc2 %0, $vi29\n"
-		: "=r"(value));
-	return value;
-}
-
-static bool isVU0WatchdogEmulated()
+// Sets the TLB mapping for SPR to a different virtual address
+// Writes to that virtual address
+// Reads SPR with the DMA
+// Compares the written data to the DMA data
+// I've found that index 0 (the first TLB record) is for SPR
+static bool isSPRTLBEmulated()
 {
 	DIntr();
 
-	ee_sema_t wdSema;
-	wdSema.option = 0;
-	wdSema.init_count = 0;
-	wdSema.max_count = 1;
-	wdSemaID = CreateSema(&wdSema);
+	u32 EntryLo0;
 
+	asm volatile(
+		"mtc0 $zero, $0\n" // Set Index to 0
+		"tlbr\n" // Read tlb
+		"sync.p\n" // Sync
+		"mfc0 %0, $2\n" // Read EntryLo0 into our variable
+		"sync.p\n" // Sync
+		: "=r"(EntryLo0));
 
-	//DisableIntcHandler(INTC_VU0WD);
-	s32 intHandlerID = AddIntcHandler(INTC_VU0WD, intWatchdogHandler, 0);
-	//	EnableIntc(INTC_VU0WD);
-	EnableIntcHandler(INTC_VU0WD);
-
-	VUINSTR infLoop[50] alignas(16);
-	VUINSTR* instr = infLoop;
-
-	for (int i = 0; i < 48; i++)
+	if ((EntryLo0 & (1 << 31)) == 0)
 	{
-		// NOP
-		instr->HI = 0x2FF;
-		// IADDIU VI00, VI00, 0
-		instr->LO = (0x8 << 25);
-
-		instr++;
+		// This should've been the scratchpad mapping
+		sio_puts("isTLBEmulated() -> TLB entry 0 isn't for SPR?");
+		EIntr();
+		return false;
 	}
-	// NOP
-	instr->HI = 0x2FF;
-	// JR VI00
-	instr->LO = (0x24 << 25);
 
-	instr++;
+	u32 EntryHi = 0x75000000; // (Usually 0x70000000)
 
-	// NOP
-	instr->HI = 0x2FF;
-	// IADDIU VI00, VI00, 0
-	instr->LO = (0x8 << 25);
+	asm volatile(
+		"mtc0 $zero, $0\n" // Set Index to 0
+		"tlbr\n" // Read tlb
+		"sync.p\n" // Sync
+		"mtc0 %0, $10\n" // Write our new mapping into entryHi
+		"tlbwi\n" // Write our new TLB map
+		"sync.p\n" // Sync
+		::"r"(EntryHi));
 
-	instr++;
+	// Our TLB is now set up
+
+	qword_t* SPR = (qword_t*)0x75000000;
+
+	qword_t dummyData;
+
+	for (int i = 0; i < 4; i++)
+		dummyData.sw[i] = ~i;
+
+	*SPR = dummyData;
+
+	// Now, in the case of PCSX2, the above would TLB miss
+	// We wouldn't know though as nothing gets passed to COP0
+	// and PCSX2 pretends that everything is fine
+	// It even writes to 0x75000000, so a read from the address would return
+	// what we wrote
+	// To circumvent this, read SPR from the DMA
+
+	qword_t sprData;
+	*R_EE_D8_SADR = 0;
+	*R_EE_D8_MADR = (u32)&sprData;
+	*R_EE_D8_QWC = 1;
+
+	FlushCache(0);
+
+	*R_EE_D8_CHCR = 0x100;
+	while (*R_EE_D8_CHCR & 0x100)
+	{
+	};
+
+	FlushCache(0);
+
+	// Restore the 'normal' TLB entry
+
+	EntryHi = 0x70000000;
+
+	asm volatile(
+		"mtc0 $zero, $0\n"
+		"tlbr\n"
+		"sync.p\n"
+		"mtc0 %0, $10\n"
+		"tlbwi\n"
+		"sync.p\n" ::"r"(EntryHi));
 
 	EIntr();
 
-	tests::vu::uploadMicroProgram(0, &infLoop->_64, &instr->_64, 0);
-
-	asm volatile(
-		//"vcallms 0\n"
-		"nop\n"
-		"nop\n"
-		"nop\n"
-		//"cfc2.i $t0, $vi1\n"
-	);
-
-	sio_puts("Waiting");
-
-	nopdelay();
-	nopdelay();
-	nopdelay();
-	nopdelay();
-	nopdelay();
-	sio_puts(std::to_string(pollVU0Finish()).c_str());
-
-	WaitSema(wdSemaID);
-	sio_puts("Done");
-	SleepThread();
-	RemoveIntcHandler(INTC_VU0WD, intHandlerID);
-	return false;
+	return sprData.qw == dummyData.qw;
 }
-
-*/
 
 void tests::emulationTests()
 {
 	qword_t* drawArea = (qword_t*)aligned_alloc(64, sizeof(qword_t) * 2048);
 	qword_t* q = drawArea;
-
 
 	std::string cop2Pipeline = "COP2 Pipeline: ";
 
@@ -360,6 +355,9 @@ void tests::emulationTests()
 	std::string vuMulInaccuracy = "VU (1 * ft) Inaccuracy: ";
 	vuMulInaccuracy.append(isMul1ByxErrorEmulated() ? "Present" : "Not Present");
 
+	std::string sprTLB = "SPR TLB Remapping: ";
+	sprTLB.append(isSPRTLBEmulated() ? "Present" : "Not Present");
+
 	do
 	{
 		q = drawArea;
@@ -370,7 +368,7 @@ void tests::emulationTests()
 		q = fontengine_print_string(q, vifFifo.c_str(), 0, 60, 2, GS_SET_RGBAQ(255, 255, 255, 128, 0));
 		q = fontengine_print_string(q, gifFifo.c_str(), 0, 80, 2, GS_SET_RGBAQ(255, 255, 255, 128, 0));
 		q = fontengine_print_string(q, vuMulInaccuracy.c_str(), 0, 100, 2, GS_SET_RGBAQ(255, 255, 255, 128, 0));
-
+		q = fontengine_print_string(q, sprTLB.c_str(), 0, 120, 2, GS_SET_RGBAQ(255, 255, 255, 128, 0));
 
 		dma_channel_send_normal(DMA_CHANNEL_GIF, drawArea, q - drawArea, 0, 0);
 		dma_channel_wait(DMA_CHANNEL_GIF, 0);
