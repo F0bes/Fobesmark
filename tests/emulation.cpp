@@ -244,12 +244,21 @@ static bool isMul1ByxErrorEmulated()
 	return true;
 }
 
+extern "C" {
+void _tlbRefillHandler();
+u32 _tlbRefillHandlerCalled = 0;
+}
+
 // Sets the TLB mapping for SPR to a different virtual address
 // Writes to that virtual address
 // Reads SPR with the DMA
 // Compares the written data to the DMA data
 // I've found that index 0 (the first TLB record) is for SPR
-static bool isSPRTLBEmulated()
+// Returns
+// 0 -> TLB handler was called
+// 1 -> Write did not go to SPR
+// 2 -> Success!
+static u32 isSPRTLBEmulated()
 {
 	DIntr();
 
@@ -284,14 +293,29 @@ static bool isSPRTLBEmulated()
 
 	// Our TLB is now set up
 
-	qword_t* SPR = (qword_t*)0x75000000;
 
-	qword_t dummyData;
+	// There's a chance that the emulator will throw a TLB miss
+	// because it emulates that, but not TLB remapping
+	// Let's save the current handler, set our own and then restore
+	void* _oldl1TlbMissHandler = GetExceptionHandler(3);
+	SetVTLBRefillHandler(3, (void*)_tlbRefillHandler);
 
+
+	qword_t dummyData alignas(16);
 	for (int i = 0; i < 4; i++)
 		dummyData.sw[i] = ~i;
 
+
+	qword_t* SPR = (qword_t*)0x75000000;
+	// TLB miss would happen here
 	*SPR = dummyData;
+
+	FlushCache(0);
+
+	// Restore the handler
+
+	SetVTLBRefillHandler(3, _oldl1TlbMissHandler);
+
 
 	// Now, in the case of PCSX2, the above would TLB miss
 	// We wouldn't know though as nothing gets passed to COP0
@@ -328,7 +352,15 @@ static bool isSPRTLBEmulated()
 
 	EIntr();
 
-	return sprData.qw == dummyData.qw;
+	if (_tlbRefillHandlerCalled)
+		return 0;
+
+	if (sprData.qw != dummyData.qw)
+	{
+		return 1;
+	}
+
+	return 2;
 }
 
 void tests::emulationTests()
@@ -356,7 +388,19 @@ void tests::emulationTests()
 	vuMulInaccuracy.append(isMul1ByxErrorEmulated() ? "Present" : "Not Present");
 
 	std::string sprTLB = "SPR TLB Remapping: ";
-	sprTLB.append(isSPRTLBEmulated() ? "Present" : "Not Present");
+	u32 tlbResult = isSPRTLBEmulated();
+	if (tlbResult == 0)
+	{
+		sprTLB.append("Not Present (TLB missed)");
+	}
+	else if (tlbResult == 1)
+	{
+		sprTLB.append("Not Present (Write did not go to SPR)");
+	}
+	else
+	{
+		sprTLB.append("Present");
+	}
 
 	do
 	{
