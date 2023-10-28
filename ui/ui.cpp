@@ -88,7 +88,6 @@ void initialiseDrawContext()
 	free(drawContextPacket);
 }
 
-// TODO: Do page/item init during compile time if possible?
 void ui::initialise(u32 width, u32 height, u32 psm, u32 zsm)
 {
 	// Reset the GIF
@@ -114,8 +113,6 @@ void ui::initialise(u32 width, u32 height, u32 psm, u32 zsm)
 	fontengine_init(psm == GS_PSM_24 && zsm == GS_PSMZ_24, fb.address);
 
 	initialiseDrawContext();
-
-	// Initialise fontengine
 
 	drawArea = (qword_t*)aligned_alloc(64, sizeof(qword_t) * drawAreaQW);
 

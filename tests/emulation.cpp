@@ -293,7 +293,6 @@ static u32 isSPRTLBEmulated()
 
 	// Our TLB is now set up
 
-
 	// There's a chance that the emulator will throw a TLB miss
 	// because it emulates that, but not TLB remapping
 	// Let's save the current handler, set our own and then restore

@@ -50,7 +50,7 @@ inline void waitVU1Finish(void)
 // Return true on success
 bool tests::vu::uploadMicroProgram(const u32 offset, const u64* start, const u64* end, u32 vu1)
 {
-	u32 vp[0xFFF] __attribute__((aligned(128)));
+	u32* vp = static_cast<u32*>(aligned_alloc(16, 0xFFF * sizeof(u32)));
 	u32 vpi = 0;
 
 	u32 progInstructions = (end - start);
@@ -107,6 +107,7 @@ bool tests::vu::uploadMicroProgram(const u32 offset, const u64* start, const u64
 	{
 	}
 
+	free(vp);
 	return true;
 }
 
@@ -214,10 +215,11 @@ void smallBlocks(const bool VU1)
 
 		qword_t* q = drawArea;
 		q = ui::clearFrame(q);
+
 		dma_channel_send_normal(DMA_CHANNEL_GIF, drawArea, q - drawArea, 0, 0);
 		dma_channel_wait(DMA_CHANNEL_GIF, 0);
 		WaitSema(ui::iVsyncSemaID);
-	} while (pad::readbuttonstate() != pad::buttonstate::X);
+	} while(pad::readbuttonstate() != pad::buttonstate::X);
 
 	asm volatile(
 		"li $t0, 2\n"

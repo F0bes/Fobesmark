@@ -72,7 +72,6 @@ void pad::init()
 
 	printf("Pad connected!\n");
 }
-
 struct padButtonStatus buttons;
 static u32 paddata;
 static u32 old_pad;

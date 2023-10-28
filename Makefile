@@ -12,7 +12,6 @@ EE_DVP = dvp-as
 GIT_VERSION := "$(shell git describe --abbrev=4 --always --tags)"
 
 EE_CXXFLAGS = -I$(shell pwd) -Werror -DGIT_VERSION="\"$(GIT_VERSION)\"" -fno-exceptions
-
 all: $(EE_BIN)
 
 padman.s: $(PS2SDK)/iop/irx/padman.irx
@@ -37,10 +36,10 @@ run: $(EE_BIN)
 	ps2client execee host:$(EE_BIN)
 
 wsl: $(EE_BIN)
-	$(PCSX2) --elf="$(shell wslpath -w $(shell pwd))/$(EE_BIN)"
+	$(PCSX2) -elf "$(shell wslpath -w $(shell pwd))/$(EE_BIN)"
 
 emu: $(EE_BIN)
-	$(PCSX2) --elf="$(shell pwd)/$(EE_BIN)"
+	$(PCSX2) -elf "$(shell pwd)/$(EE_BIN)"
 
 reset:
 	ps2client reset
