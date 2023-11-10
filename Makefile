@@ -2,7 +2,7 @@ EE_BIN = fobesmark.elf
 EE_OBJS = main.o ui/ui.o fontengine/fontengine.o 
 EE_OBJS += font_pallete_tex.o font_tex.o
 EE_OBJS += pad.o padman.o sio2man.o
-EE_OBJS += tests/emulation.o tests/exceptionhandler.o tests/vu/vu.o
+EE_OBJS += tests/emulation.o tests/exceptionhandler.o tests/vu/vu.o tests/gs/gs.o tests/micro/deadlock.o
 EE_LIBS = -lstdc++ -lkernel -lpatches -lgraph -ldma -ldraw -lpad
 EE_INCS += -Ifontengine/
 

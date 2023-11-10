@@ -71,7 +71,8 @@ namespace ui
 	extern int iVsyncSemaID;
 	void initialise(u32 width, u32 height, u32 psm, u32 zsm);
 	void draw();
-	qword_t* clearFrame(qword_t* q);
+	qword_t* clearFrame(qword_t* q, bool includeButtons = true);
+	qword_t* drawButtons(qword_t* q);
 	void click();
 
 	namespace internal

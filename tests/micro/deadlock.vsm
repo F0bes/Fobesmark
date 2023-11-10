@@ -1,0 +1,18 @@
+.vu
+.align 4
+.global	VU0DEADLOCK_CodeStart
+.global	VU0DEADLOCK_CodeEnd
+
+
+; Just loop forever
+; Once a COP2 instruction is executed with interlock, blamo!
+VU0DEADLOCK_CodeStart:
+
+NOP                IADDI VI01, VI00, 1
+NOP                NOP
+_loopStart:
+NOP                NOP
+NOP                IBNE VI01, VI00, _loopStart ; Don't unconditionally jump. MicroVU detects this
+NOP                NOP
+NOP[e]             NOP
+VU0DEADLOCK_CodeEnd:

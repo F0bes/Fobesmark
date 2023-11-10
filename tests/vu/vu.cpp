@@ -2,6 +2,8 @@
 #include "vpucodes.h"
 #include "ui/ui.h"
 
+#include "fontengine.h"
+
 #include <tamtypes.h>
 #include <ee_regs.h>
 #include <kernel.h>
@@ -238,4 +240,34 @@ void tests::vu::smallBlockVU0()
 void tests::vu::smallBlockVU1()
 {
 	smallBlocks(true);
+}
+
+
+extern "C" {
+extern VUINSTR* VU0DEADLOCK_CodeStart;
+extern VUINSTR* VU0DEADLOCK_CodeEnd;
+}
+void tests::vu::deadlock()
+{
+	tests::vu::uploadMicroProgram(0, (u64*)&VU0DEADLOCK_CodeStart, (u64*)&VU0DEADLOCK_CodeEnd, false);
+
+	// Interlock with VU0. The same VU we put in a never ending loop
+	asm volatile("CFC2.i $zero, $vi0\n");
+
+	qword_t* drawArea = (qword_t*)aligned_alloc(64, sizeof(qword_t) * 200);
+	qword_t* q = drawArea;
+	int v_cnt = 0;
+	do
+	{
+		q = drawArea;
+		v_cnt++;
+		q = ui::clearFrame(q);
+		q = fontengine_print_string(q, "You survived!\n(Restart if this happens, VU0 is stuck!)", 0, 0, 0, GS_SET_RGBAQ(0x99, 0x99, 0x99, 0x80, 1));
+
+		dma_channel_send_normal(DMA_CHANNEL_GIF, drawArea, q - drawArea, 0, 0);
+		dma_channel_wait(DMA_CHANNEL_GIF, 0);
+		WaitSema(ui::iVsyncSemaID);
+	} while ((pad::readbuttonstate() != pad::buttonstate::X) && v_cnt <= 120);
+
+	free(drawArea);
 }
